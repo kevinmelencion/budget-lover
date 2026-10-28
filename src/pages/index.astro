@@ -1,16 +1,578 @@
 ---
+import sql from '../lib/db.js';
+
+// Query all categories sorted by name
+const categories = await sql`
+  SELECT * FROM categories ORDER BY name ASC
+`;
+
+// Query transactions joined with categories sorted by date and creation time
+const transactions = await sql`
+  SELECT t.*, c.name AS category_name, c.icon AS category_icon 
+  FROM transactions t 
+  LEFT JOIN categories c ON t.category_id = c.id 
+  ORDER BY t.transaction_date DESC, t.created_at DESC
+`;
+
+// Calculate totals directly in JavaScript
+let totalIncomeCents = 0;
+let totalExpenseCents = 0;
+
+for (const t of transactions) {
+  const amount = Number(t.amount_cents) || 0;
+  if (t.type === 'INCOME') {
+    totalIncomeCents += amount;
+  } else if (t.type === 'EXPENSE') {
+    totalExpenseCents += amount;
+  }
+}
+
+const netBalanceCents = totalIncomeCents - totalExpenseCents;
+
+// Helper to format cents into currency string (e.g. 1050 -> '$10.50')
+function formatCurrency(cents) {
+  const isNegative = cents < 0;
+  const absCents = Math.abs(cents);
+  const dollars = (absCents / 100).toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+  return `${isNegative ? '-' : ''}$${dollars}`;
+}
+
+// Helper to format dates cleanly
+function formatDate(dateValue) {
+  if (!dateValue) return '';
+  const d = new Date(dateValue);
+  if (isNaN(d.getTime())) return String(dateValue);
+  return d.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    timeZone: 'UTC',
+  });
+}
 ---
 
 <html lang="en">
-	<head>
-		<meta charset="utf-8" />
-		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-		<link rel="icon" href="/favicon.ico" />
-		<meta name="viewport" content="width=device-width" />
-		<meta name="generator" content={Astro.generator} />
-		<title>Astro</title>
-	</head>
-	<body>
-		<h1>Astro</h1>
-	</body>
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" href="/favicon.ico" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="generator" content={Astro.generator} />
+    <title>Budget Lover | Personal Finance Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <div class="dashboard-container">
+      <header class="dashboard-header">
+        <div class="header-content">
+          <div class="brand">
+            <span class="brand-icon">💰</span>
+            <div>
+              <h1 class="brand-title">Budget Lover</h1>
+              <p class="brand-subtitle">Financial Overview & Transaction Tracking</p>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main class="dashboard-main">
+        <!-- Summary Cards -->
+        <section class="summary-cards" aria-label="Financial Summary">
+          <div class="card summary-card income-card">
+            <div class="card-header">
+              <span class="card-label">Total Income</span>
+              <span class="card-icon income-icon" aria-hidden="true">↑</span>
+            </div>
+            <div class="card-value income-value">
+              +{formatCurrency(totalIncomeCents)}
+            </div>
+            <span class="card-footnote">All recorded income</span>
+          </div>
+
+          <div class="card summary-card expense-card">
+            <div class="card-header">
+              <span class="card-label">Total Expenses</span>
+              <span class="card-icon expense-icon" aria-hidden="true">↓</span>
+            </div>
+            <div class="card-value expense-value">
+              -{formatCurrency(totalExpenseCents)}
+            </div>
+            <span class="card-footnote">All recorded expenses</span>
+          </div>
+
+          <div class="card summary-card balance-card">
+            <div class="card-header">
+              <span class="card-label">Net Balance</span>
+              <span class="card-icon balance-icon" aria-hidden="true">⚖</span>
+            </div>
+            <div class={`card-value ${netBalanceCents >= 0 ? 'balance-positive' : 'balance-negative'}`}>
+              {formatCurrency(netBalanceCents)}
+            </div>
+            <span class="card-footnote">Current net standing</span>
+          </div>
+        </section>
+
+        <!-- Transactions Section -->
+        <section class="transactions-section">
+          <div class="section-header">
+            <div class="section-title-wrapper">
+              <h2 class="section-title">Recent Transactions</h2>
+              <span class="count-badge">{transactions.length} total</span>
+            </div>
+          </div>
+
+          {transactions.length === 0 ? (
+            <div class="empty-state">
+              <div class="empty-icon" aria-hidden="true">📋</div>
+              <h3 class="empty-title">No transactions yet</h3>
+              <p class="empty-message">No transactions yet. Add your first transaction below!</p>
+            </div>
+          ) : (
+            <div class="table-container">
+              <table class="transactions-table">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Category</th>
+                    <th>Note</th>
+                    <th>Type</th>
+                    <th class="text-right">Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {transactions.map((tx) => {
+                    const isIncome = tx.type === 'INCOME';
+                    return (
+                      <tr class="transaction-row">
+                        <td class="date-cell">{formatDate(tx.transaction_date)}</td>
+                        <td>
+                          <span class="category-pill">
+                            <span class="category-icon-tag">
+                              {tx.category_icon === 'cash' && '💵'}
+                              {tx.category_icon === 'briefcase' && '💼'}
+                              {tx.category_icon === 'shopping-cart' && '🛒'}
+                              {tx.category_icon === 'utensils' && '🍽️'}
+                              {!['cash', 'briefcase', 'shopping-cart', 'utensils'].includes(tx.category_icon) && '🏷️'}
+                            </span>
+                            <span class="category-name">{tx.category_name || 'Uncategorized'}</span>
+                          </span>
+                        </td>
+                        <td class="note-cell">
+                          {tx.note ? tx.note : <span class="empty-note">—</span>}
+                        </td>
+                        <td>
+                          <span class={`type-badge ${isIncome ? 'badge-income' : 'badge-expense'}`}>
+                            {tx.type}
+                          </span>
+                        </td>
+                        <td class={`amount-cell text-right ${isIncome ? 'amount-income' : 'amount-expense'}`}>
+                          {isIncome ? '+' : '-'}{formatCurrency(tx.amount_cents)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      </main>
+    </div>
+  </body>
 </html>
+
+<style>
+  :root {
+    --bg-page: #f8fafc;
+    --bg-card: #ffffff;
+    --border-subtle: #e2e8f0;
+    --border-hover: #cbd5e1;
+    --text-primary: #0f172a;
+    --text-secondary: #64748b;
+    --text-muted: #94a3b8;
+    
+    --color-income: #10b981;
+    --color-income-dark: #047857;
+    --color-income-bg: #ecfdf5;
+
+    --color-expense: #ef4444;
+    --color-expense-dark: #b91c1c;
+    --color-expense-bg: #fef2f2;
+
+    --color-balance: #4f46e5;
+    --color-balance-bg: #eef2ff;
+
+    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+    --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+    --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.07), 0 4px 6px -4px rgb(0 0 0 / 0.07);
+    --radius-sm: 6px;
+    --radius-md: 10px;
+    --radius-lg: 16px;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  body {
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background-color: var(--bg-page);
+    color: var(--text-primary);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .dashboard-container {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .dashboard-header {
+    background-color: var(--bg-card);
+    border-bottom: 1px solid var(--border-subtle);
+    padding: 1.25rem 1.5rem;
+  }
+
+  .header-content {
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 0.875rem;
+  }
+
+  .brand-icon {
+    font-size: 2rem;
+    line-height: 1;
+    background: #f1f5f9;
+    padding: 0.5rem;
+    border-radius: var(--radius-md);
+  }
+
+  .brand-title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    letter-spacing: -0.025em;
+  }
+
+  .brand-subtitle {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+  }
+
+  .dashboard-main {
+    max-width: 1100px;
+    width: 100%;
+    margin: 0 auto;
+    padding: 2rem 1.5rem 4rem 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+  }
+
+  /* Summary Cards */
+  .summary-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1.25rem;
+  }
+
+  .card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    padding: 1.5rem;
+    box-shadow: var(--shadow-sm);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+  }
+
+  .card:hover {
+    box-shadow: var(--shadow-md);
+    transform: translateY(-1px);
+  }
+
+  .card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.75rem;
+  }
+
+  .card-label {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .card-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1rem;
+    font-weight: bold;
+  }
+
+  .income-icon {
+    background-color: var(--color-income-bg);
+    color: var(--color-income);
+  }
+
+  .expense-icon {
+    background-color: var(--color-expense-bg);
+    color: var(--color-expense);
+  }
+
+  .balance-icon {
+    background-color: var(--color-balance-bg);
+    color: var(--color-balance);
+  }
+
+  .card-value {
+    font-size: 2rem;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    margin-bottom: 0.25rem;
+  }
+
+  .income-value {
+    color: var(--color-income-dark);
+  }
+
+  .expense-value {
+    color: var(--color-expense-dark);
+  }
+
+  .balance-positive {
+    color: var(--text-primary);
+  }
+
+  .balance-negative {
+    color: var(--color-expense-dark);
+  }
+
+  .card-footnote {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+  }
+
+  /* Transactions Section */
+  .transactions-section {
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+    overflow: hidden;
+  }
+
+  .section-header {
+    padding: 1.25rem 1.5rem;
+    border-bottom: 1px solid var(--border-subtle);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .section-title-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .section-title {
+    font-size: 1.125rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    letter-spacing: -0.01em;
+  }
+
+  .count-badge {
+    background: #f1f5f9;
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 0.2rem 0.6rem;
+    border-radius: 9999px;
+  }
+
+  /* Table */
+  .table-container {
+    width: 100%;
+    overflow-x: auto;
+  }
+
+  .transactions-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+  }
+
+  .transactions-table th {
+    text-align: left;
+    padding: 0.875rem 1.5rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-secondary);
+    background-color: #fafbfc;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .transactions-table td {
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid var(--border-subtle);
+    color: var(--text-primary);
+    vertical-align: middle;
+  }
+
+  .transaction-row:last-child td {
+    border-bottom: none;
+  }
+
+  .transaction-row:hover {
+    background-color: #f8fafc;
+  }
+
+  .date-cell {
+    font-weight: 500;
+    color: var(--text-secondary);
+    white-space: nowrap;
+  }
+
+  .category-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.25rem 0.65rem;
+    background-color: #f1f5f9;
+    border-radius: var(--radius-sm);
+    font-weight: 500;
+    font-size: 0.8125rem;
+  }
+
+  .category-icon-tag {
+    font-size: 0.9rem;
+  }
+
+  .note-cell {
+    max-width: 320px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .empty-note {
+    color: var(--text-muted);
+  }
+
+  .type-badge {
+    display: inline-block;
+    padding: 0.2rem 0.5rem;
+    border-radius: var(--radius-sm);
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .badge-income {
+    background-color: var(--color-income-bg);
+    color: var(--color-income-dark);
+  }
+
+  .badge-expense {
+    background-color: var(--color-expense-bg);
+    color: var(--color-expense-dark);
+  }
+
+  .amount-cell {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-weight: 700;
+    font-size: 0.9375rem;
+    white-space: nowrap;
+  }
+
+  .amount-income {
+    color: var(--color-income-dark);
+  }
+
+  .amount-expense {
+    color: var(--color-expense-dark);
+  }
+
+  .text-right {
+    text-align: right;
+  }
+
+  /* Empty State */
+  .empty-state {
+    padding: 4rem 1.5rem;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .empty-icon {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+    opacity: 0.7;
+  }
+
+  .empty-title {
+    font-size: 1.125rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 0.35rem;
+  }
+
+  .empty-message {
+    color: var(--text-secondary);
+    font-size: 0.9375rem;
+    max-width: 400px;
+  }
+
+  @media (max-width: 640px) {
+    .dashboard-main {
+      padding: 1.25rem 1rem 3rem 1rem;
+    }
+
+    .summary-cards {
+      grid-template-columns: 1fr;
+    }
+
+    .card {
+      padding: 1.25rem;
+    }
+
+    .card-value {
+      font-size: 1.75rem;
+    }
+
+    .transactions-table th,
+    .transactions-table td {
+      padding: 0.75rem 1rem;
+    }
+  }
+</style>

@@ -13,6 +13,7 @@
     "db:migrate": "node scripts/migrate.js"
   },
   "dependencies": {
+    "@astrojs/node": "^11.1.9",
     "astro": "^7.4.2",
     "dotenv": "^18.0.9",
     "postgres": "^3.4.9"
