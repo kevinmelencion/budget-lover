@@ -269,6 +269,7 @@ const todayDateString = new Date().toISOString().split('T')[0];
                     <th>Note</th>
                     <th>Type</th>
                     <th class="text-right">Amount</th>
+                    <th class="text-center th-action"></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -299,6 +300,22 @@ const todayDateString = new Date().toISOString().split('T')[0];
                         </td>
                         <td class={`amount-cell text-right ${isIncome ? 'amount-income' : 'amount-expense'}`}>
                           {isIncome ? '+' : '-'}{formatCurrency(tx.amount_cents)}
+                        </td>
+                        <td class="action-cell text-center">
+                          <button
+                            type="button"
+                            class="delete-btn"
+                            data-id={tx.id}
+                            title="Delete transaction"
+                            aria-label={`Delete transaction: ${tx.note || tx.category_name || tx.id}`}
+                          >
+                            <svg class="trash-icon" viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                              <polyline points="3 6 5 6 21 6"></polyline>
+                              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                              <line x1="10" y1="11" x2="10" y2="17"></line>
+                              <line x1="14" y1="11" x2="14" y2="17"></line>
+                            </svg>
+                          </button>
                         </td>
                       </tr>
                     );
@@ -451,11 +468,52 @@ const todayDateString = new Date().toISOString().split('T')[0];
         }
       }
 
+      function initDeleteHandlers() {
+        const deleteButtons = document.querySelectorAll('.delete-btn');
+        deleteButtons.forEach((btn) => {
+          btn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            const id = btn.getAttribute('data-id');
+            if (!id) return;
+
+            const confirmed = window.confirm('Are you sure you want to delete this transaction?');
+            if (!confirmed) return;
+
+            btn.disabled = true;
+            btn.classList.add('is-deleting');
+
+            try {
+              const response = await fetch(`/api/transactions/${id}`, {
+                method: 'DELETE',
+              });
+
+              const data = await response.json().catch(() => ({}));
+
+              if (!response.ok || !data.success) {
+                throw new Error(data.error || 'Failed to delete transaction.');
+              }
+
+              // Reload page to update summary totals and transaction list
+              window.location.reload();
+            } catch (err) {
+              alert(err.message || 'An error occurred while deleting the transaction.');
+              btn.disabled = false;
+              btn.classList.remove('is-deleting');
+            }
+          });
+        });
+      }
+
+      function initDashboard() {
+        initTransactionForm();
+        initDeleteHandlers();
+      }
+
       // Run on DOM load
       if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', initTransactionForm);
+        document.addEventListener('DOMContentLoaded', initDashboard);
       } else {
-        initTransactionForm();
+        initDashboard();
       }
     </script>
   </body>
@@ -1008,6 +1066,53 @@ const todayDateString = new Date().toISOString().split('T')[0];
 
   .amount-expense {
     color: var(--color-expense-dark);
+  }
+
+  .th-action,
+  .action-cell {
+    width: 48px;
+    padding-left: 0.5rem;
+    padding-right: 1.25rem;
+  }
+
+  .text-center {
+    text-align: center;
+  }
+
+  .delete-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .delete-btn:hover:not(:disabled) {
+    background-color: var(--color-expense-bg);
+    border-color: #fecaca;
+    color: var(--color-expense-dark);
+    transform: scale(1.05);
+  }
+
+  .delete-btn:active:not(:disabled) {
+    transform: scale(0.95);
+  }
+
+  .delete-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .trash-icon {
+    display: block;
+    pointer-events: none;
   }
 
   .text-right {
