@@ -52,6 +52,8 @@ function formatDate(dateValue) {
     timeZone: 'UTC',
   });
 }
+
+const todayDateString = new Date().toISOString().split('T')[0];
 ---
 
 <html lang="en">
@@ -120,6 +122,128 @@ function formatDate(dateValue) {
           </div>
         </section>
 
+        <!-- Add Transaction Form Section -->
+        <section class="add-transaction-section card">
+          <div class="form-header">
+            <div class="form-title-wrapper">
+              <span class="form-icon">✍️</span>
+              <div>
+                <h2 class="form-title">Add Transaction</h2>
+                <p class="form-subtitle">Record a new expense or income entry</p>
+              </div>
+            </div>
+          </div>
+
+          <form
+            id="transaction-form"
+            class="transaction-form"
+            data-categories={JSON.stringify(categories)}
+            novalidate
+          >
+            <div class="form-grid">
+              <!-- Type Toggle -->
+              <div class="form-group form-group-type">
+                <label class="form-label">Type</label>
+                <div class="type-toggle-group">
+                  <label class="type-toggle-label">
+                    <input
+                      type="radio"
+                      name="type"
+                      value="EXPENSE"
+                      checked
+                      class="type-radio sr-only"
+                    />
+                    <span class="type-toggle-button expense-btn">
+                      <span class="type-arrow">↓</span> Expense
+                    </span>
+                  </label>
+                  <label class="type-toggle-label">
+                    <input
+                      type="radio"
+                      name="type"
+                      value="INCOME"
+                      class="type-radio sr-only"
+                    />
+                    <span class="type-toggle-button income-btn">
+                      <span class="type-arrow">↑</span> Income
+                    </span>
+                  </label>
+                </div>
+              </div>
+
+              <!-- Amount Input -->
+              <div class="form-group">
+                <label for="amount" class="form-label">Amount ($)</label>
+                <div class="input-prefix-wrapper">
+                  <span class="currency-prefix">$</span>
+                  <input
+                    type="number"
+                    id="amount"
+                    name="amount"
+                    step="0.01"
+                    min="0.01"
+                    placeholder="0.00"
+                    required
+                    class="form-input amount-input"
+                  />
+                </div>
+              </div>
+
+              <!-- Category Dropdown -->
+              <div class="form-group">
+                <label for="category_id" class="form-label">Category</label>
+                <div class="select-wrapper">
+                  <select id="category_id" name="category_id" required class="form-select">
+                    <option value="" disabled selected>Select category</option>
+                    {categories.map((c) => (
+                      <option value={c.id} data-type={c.type}>
+                        {c.icon === 'cash' ? '💵 ' : c.icon === 'briefcase' ? '💼 ' : c.icon === 'shopping-cart' ? '🛒 ' : c.icon === 'utensils' ? '🍽️ ' : '🏷️ '}
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <!-- Transaction Date -->
+              <div class="form-group">
+                <label for="transaction_date" class="form-label">Date</label>
+                <input
+                  type="date"
+                  id="transaction_date"
+                  name="transaction_date"
+                  value={todayDateString}
+                  required
+                  class="form-input"
+                />
+              </div>
+
+              <!-- Note Input -->
+              <div class="form-group form-group-note">
+                <label for="note" class="form-label">Note (Optional)</label>
+                <input
+                  type="text"
+                  id="note"
+                  name="note"
+                  placeholder="e.g. Grocery restock, Weekly dinner"
+                  maxlength="255"
+                  class="form-input"
+                />
+              </div>
+            </div>
+
+            <!-- Inline Error Message -->
+            <div id="form-error" class="form-error-alert" style="display: none;" role="alert"></div>
+
+            <div class="form-footer">
+              <button type="submit" id="submit-btn" class="submit-button">
+                <span class="submit-button-icon">+</span>
+                <span class="submit-button-text">Save Transaction</span>
+              </button>
+            </div>
+          </form>
+        </section>
+
         <!-- Transactions Section -->
         <section class="transactions-section">
           <div class="section-header">
@@ -186,6 +310,154 @@ function formatDate(dateValue) {
         </section>
       </main>
     </div>
+
+    <script>
+      function initTransactionForm() {
+        const form = document.getElementById('transaction-form');
+        if (!form) return;
+
+        const categories = JSON.parse(form.getAttribute('data-categories') || '[]');
+        const categorySelect = document.getElementById('category_id');
+        const typeRadios = form.querySelectorAll('input[name="type"]');
+        const errorBox = document.getElementById('form-error');
+        const submitBtn = document.getElementById('submit-btn');
+        const submitBtnText = submitBtn?.querySelector('.submit-button-text');
+        const dateInput = document.getElementById('transaction_date');
+
+        // Ensure date input defaults to user's local date if not already filled
+        if (dateInput && !dateInput.value) {
+          const now = new Date();
+          const year = now.getFullYear();
+          const month = String(now.getMonth() + 1).padStart(2, '0');
+          const day = String(now.getDate()).padStart(2, '0');
+          dateInput.value = `${year}-${month}-${day}`;
+        }
+
+        const iconMap = {
+          cash: '💵',
+          briefcase: '💼',
+          'shopping-cart': '🛒',
+          utensils: '🍽️',
+        };
+
+        function getSelectedType() {
+          const checked = form.querySelector('input[name="type"]:checked');
+          return checked ? checked.value : 'EXPENSE';
+        }
+
+        function filterCategories() {
+          const selectedType = getSelectedType();
+          const currentSelected = categorySelect.value;
+          categorySelect.innerHTML = '<option value="" disabled selected>Select category</option>';
+
+          const filtered = categories.filter((c) => c.type === selectedType);
+          filtered.forEach((cat) => {
+            const opt = document.createElement('option');
+            opt.value = cat.id;
+            const icon = iconMap[cat.icon] || '🏷️';
+            opt.textContent = `${icon} ${cat.name}`;
+            if (cat.id === currentSelected) {
+              opt.selected = true;
+            }
+            categorySelect.appendChild(opt);
+          });
+
+          // If no option selected yet, select the first matching category
+          if (!categorySelect.value && filtered.length > 0) {
+            categorySelect.selectedIndex = 1;
+          }
+        }
+
+        typeRadios.forEach((radio) => {
+          radio.addEventListener('change', filterCategories);
+        });
+
+        // Initialize category dropdown based on default selected type
+        filterCategories();
+
+        form.addEventListener('submit', async (e) => {
+          e.preventDefault();
+
+          if (errorBox) {
+            errorBox.style.display = 'none';
+            errorBox.textContent = '';
+          }
+
+          const type = getSelectedType();
+          const amountValue = form.amount ? form.amount.value.trim() : '';
+          const categoryIdValue = categorySelect ? categorySelect.value : '';
+          const dateValue = dateInput ? dateInput.value : '';
+          const noteValue = form.note ? form.note.value.trim() : '';
+
+          // Basic client validation
+          const parsedAmount = parseFloat(amountValue);
+          if (!amountValue || isNaN(parsedAmount) || parsedAmount <= 0) {
+            showError('Please enter a valid amount greater than $0.00.');
+            form.amount?.focus();
+            return;
+          }
+
+          if (!categoryIdValue) {
+            showError('Please select a valid category.');
+            categorySelect?.focus();
+            return;
+          }
+
+          if (!dateValue) {
+            showError('Please select a transaction date.');
+            dateInput?.focus();
+            return;
+          }
+
+          // Disable button during submission
+          if (submitBtn) submitBtn.disabled = true;
+          if (submitBtnText) submitBtnText.textContent = 'Saving...';
+
+          try {
+            const response = await fetch('/api/transactions', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                amount: parsedAmount,
+                type,
+                category_id: categoryIdValue,
+                transaction_date: dateValue,
+                note: noteValue,
+              }),
+            });
+
+            const data = await response.json().catch(() => ({}));
+
+            if (!response.ok || !data.success) {
+              throw new Error(data.error || 'Failed to create transaction.');
+            }
+
+            // Success - reload page to refresh summary totals and transaction list
+            window.location.reload();
+          } catch (err) {
+            showError(err.message || 'An unexpected error occurred. Please try again.');
+            if (submitBtn) submitBtn.disabled = false;
+            if (submitBtnText) submitBtnText.textContent = 'Save Transaction';
+          }
+        });
+
+        function showError(msg) {
+          if (!errorBox) return;
+          errorBox.textContent = msg;
+          errorBox.style.display = 'block';
+          errorBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+      }
+
+      // Run on DOM load
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initTransactionForm);
+      } else {
+        initTransactionForm();
+      }
+    </script>
   </body>
 </html>
 
@@ -303,7 +575,6 @@ function formatDate(dateValue) {
 
   .card:hover {
     box-shadow: var(--shadow-md);
-    transform: translateY(-1px);
   }
 
   .card-header {
@@ -373,6 +644,225 @@ function formatDate(dateValue) {
   .card-footnote {
     font-size: 0.75rem;
     color: var(--text-muted);
+  }
+
+  /* Add Transaction Form */
+  .add-transaction-section {
+    padding: 1.5rem;
+  }
+
+  .form-header {
+    margin-bottom: 1.25rem;
+    padding-bottom: 0.875rem;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .form-title-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .form-icon {
+    font-size: 1.5rem;
+  }
+
+  .form-title {
+    font-size: 1.125rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    letter-spacing: -0.01em;
+  }
+
+  .form-subtitle {
+    font-size: 0.8125rem;
+    color: var(--text-secondary);
+  }
+
+  .form-grid {
+    display: grid;
+    grid-template-columns: 180px 1fr 1.2fr 1fr;
+    gap: 1.25rem;
+    align-items: flex-start;
+  }
+
+  .form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+
+  .form-group-note {
+    grid-column: 1 / -1;
+  }
+
+  .form-label {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    letter-spacing: 0.02em;
+  }
+
+  /* Type Toggle */
+  .type-toggle-group {
+    display: flex;
+    background-color: #f1f5f9;
+    padding: 0.25rem;
+    border-radius: var(--radius-md);
+    gap: 0.25rem;
+  }
+
+  .type-toggle-label {
+    flex: 1;
+    cursor: pointer;
+  }
+
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .type-toggle-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    padding: 0.45rem 0.65rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    transition: all 0.15s ease;
+    user-select: none;
+  }
+
+  .type-arrow {
+    font-weight: 700;
+  }
+
+  .type-radio:checked + .expense-btn {
+    background-color: var(--color-expense-bg);
+    color: var(--color-expense-dark);
+    box-shadow: 0 1px 3px rgba(239, 68, 68, 0.2);
+  }
+
+  .type-radio:checked + .income-btn {
+    background-color: var(--color-income-bg);
+    color: var(--color-income-dark);
+    box-shadow: 0 1px 3px rgba(16, 185, 129, 0.2);
+  }
+
+  /* Form Inputs */
+  .form-input,
+  .form-select {
+    width: 100%;
+    height: 40px;
+    padding: 0.5rem 0.75rem;
+    font-family: inherit;
+    font-size: 0.875rem;
+    color: var(--text-primary);
+    background-color: #ffffff;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+
+  .form-input:focus,
+  .form-select:focus {
+    outline: none;
+    border-color: var(--color-balance);
+    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12);
+  }
+
+  .input-prefix-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+  }
+
+  .currency-prefix {
+    position: absolute;
+    left: 0.75rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    pointer-events: none;
+  }
+
+  .amount-input {
+    padding-left: 1.65rem;
+    font-weight: 600;
+  }
+
+  .select-wrapper {
+    position: relative;
+  }
+
+  .form-select {
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.75rem center;
+    background-size: 14px;
+    padding-right: 2rem;
+    cursor: pointer;
+  }
+
+  .form-error-alert {
+    margin-top: 1rem;
+    padding: 0.75rem 1rem;
+    background-color: var(--color-expense-bg);
+    border: 1px solid #fecaca;
+    color: var(--color-expense-dark);
+    font-size: 0.875rem;
+    font-weight: 500;
+    border-radius: var(--radius-sm);
+  }
+
+  .form-footer {
+    margin-top: 1.25rem;
+    display: flex;
+    justify-content: flex-end;
+  }
+
+  .submit-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    background-color: var(--color-balance);
+    color: #ffffff;
+    font-family: inherit;
+    font-size: 0.875rem;
+    font-weight: 600;
+    padding: 0.65rem 1.25rem;
+    border: none;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    box-shadow: 0 1px 2px rgba(79, 70, 229, 0.2);
+    transition: background-color 0.15s ease, transform 0.1s ease;
+  }
+
+  .submit-button:hover:not(:disabled) {
+    background-color: #4338ca;
+    transform: translateY(-1px);
+  }
+
+  .submit-button:disabled {
+    opacity: 0.65;
+    cursor: not-allowed;
+  }
+
+  .submit-button-icon {
+    font-size: 1.1rem;
+    line-height: 1;
+    font-weight: 700;
   }
 
   /* Transactions Section */
@@ -553,6 +1043,16 @@ function formatDate(dateValue) {
     max-width: 400px;
   }
 
+  @media (max-width: 840px) {
+    .form-grid {
+      grid-template-columns: 1fr 1fr;
+    }
+
+    .form-group-type {
+      grid-column: 1 / -1;
+    }
+  }
+
   @media (max-width: 640px) {
     .dashboard-main {
       padding: 1.25rem 1rem 3rem 1rem;
@@ -566,6 +1066,10 @@ function formatDate(dateValue) {
       padding: 1.25rem;
     }
 
+    .form-grid {
+      grid-template-columns: 1fr;
+    }
+
     .card-value {
       font-size: 1.75rem;
     }
@@ -573,6 +1077,11 @@ function formatDate(dateValue) {
     .transactions-table th,
     .transactions-table td {
       padding: 0.75rem 1rem;
+    }
+
+    .submit-button {
+      width: 100%;
+      justify-content: center;
     }
   }
 </style>
